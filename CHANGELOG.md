@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-11-19
+
+### Added
+- `holdDeepLinks()` / `releaseDeepLinks()` / `isHoldingDeepLinks()`: hold
+  deep-link delivery while the app cannot navigate. While held, the deferred
+  deep link (an attributed result carrying a link) and direct deep links are
+  queued, keeping only the latest of each kind, and delivered in arrival order
+  on release. Not held by default.
+- `setDeepLinkCallback(_:)`: optional dedicated handler for direct deep links.
+  Direct links are still delivered to the attribution callback as before.
+- Organic installs: when the server returns `installId` / `installToken` for an
+  unmatched install (`attributed: false`, server 2.2+), the SDK stores them, so
+  organic users' events, revenue and identify calls are delivered.
+- `AttributionResult.match` (`AttributionMatch` with `method` and `confidence`,
+  -1 when absent; nullable), read from the resolve response's optional `match`
+  object.
+- `getDiagnostics()` (dictionary, ObjC-visible) and `diagnostics()`
+  (`LinkFlowDiagnostics`): SDK version, API host, consent state, whether an
+  install id/token exist, last resolve time and category, last match method,
+  queued event count, hold state. It contains no identifiers or personal data.
+- README: corrected Quick Start (it showed APIs that do not exist) and added a
+  table of the entitlements and Info.plist keys the SDK uses.
+
+### Compatibility
+- **Fully backward compatible.** No public API was removed or renamed. Against
+  servers that predate 2.2 (no organic install id, no `match`), behaviour is
+  identical to 2.1.
+- `sdkVersion` reported to the server is now `2.2.0`.
+
 ## [2.1.0] - 2026-10-14
 
 ### Added
