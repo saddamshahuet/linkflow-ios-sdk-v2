@@ -345,6 +345,49 @@ final class LinkFlowSDKSurfaceTests: XCTestCase {
         XCTAssertEqual(result.attributionMethod, "fingerprint")
         XCTAssertEqual(result.confidence, 0.78)
         XCTAssertTrue(result.isReinstall)
+        XCTAssertNil(result.match)
+    }
+
+    func testAttributionResultExposesMatchInfo() {
+        let result = AttributionResult(parsed: ParsedAttribution(json: [
+            "attributed": false,
+            "match": ["method": "organic"],
+        ]))
+        XCTAssertEqual(result.match?.method, "organic")
+        XCTAssertEqual(result.match?.confidence, -1)
+    }
+
+    func testSdkVersionIs220() {
+        XCTAssertEqual(LinkFlowSDK.sdkVersion, "2.2.0")
+    }
+
+    func testDeepLinksAreNotHeldByDefaultAndHoldIsReversible() {
+        let sdk = LinkFlowSDK.initialize(config: LinkFlowConfig())
+        XCTAssertFalse(sdk.isHoldingDeepLinks())
+        sdk.holdDeepLinks()
+        XCTAssertTrue(sdk.isHoldingDeepLinks())
+        XCTAssertEqual(sdk.getDiagnostics()["deepLinksHeld"] as? Bool, true)
+        sdk.releaseDeepLinks()
+        XCTAssertFalse(sdk.isHoldingDeepLinks())
+    }
+
+    func testHeldDirectLinkIsDeliveredOnRelease() {
+        let sdk = LinkFlowSDK.initialize(config: LinkFlowConfig())
+        let delivered = expectation(description: "direct link delivered after release")
+        var received: [URL] = []
+        sdk.setDeepLinkCallback { url in
+            received.append(url)
+            delivered.fulfill()
+        }
+        sdk.holdDeepLinks()
+        _ = sdk.handleCustomURL(url: URL(string: "myapp://a")!)
+        _ = sdk.handleCustomURL(url: URL(string: "myapp://b")!)
+        XCTAssertEqual(sdk.diagnostics().heldDeepLinkCount, 1)
+        XCTAssertTrue(received.isEmpty)
+
+        sdk.releaseDeepLinks()
+        wait(for: [delivered], timeout: 2)
+        XCTAssertEqual(received, [URL(string: "myapp://b")!])
     }
 }
 #endif

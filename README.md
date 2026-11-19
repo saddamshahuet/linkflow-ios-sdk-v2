@@ -19,19 +19,19 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/thelinkflow/linkflow-ios-sdk.git", from: "2.1.0")
+    .package(url: "https://github.com/thelinkflow/linkflow-ios-sdk.git", from: "2.2.0")
 ]
 ```
 
 ### CocoaPods
 
 ```ruby
-pod 'LinkFlowSDK', '~> 2.1'
+pod 'LinkFlowSDK', '~> 2.2'
 ```
 
 ## Quick Start
 
-### 1. Configure SDK
+### 1. Configure the SDK and forward links
 
 ```swift
 import LinkFlowSDK
@@ -39,28 +39,78 @@ import LinkFlowSDK
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
-                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-
-        LinkFlowSDK.shared.configure(
-            apiBaseUrl: "https://thelinkflow.app",
-            enableLogging: true
-        )
-        LinkFlowSDK.shared.setAttributionCallback(self)
-        LinkFlowSDK.shared.handleAppLaunch(launchOptions: launchOptions)
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        LinkFlowSDK.initialize(config: LinkFlowConfig(appKey: "lfa_..."))
+            .setAttributionCallback { result in
+                if result.attributed, let link = result.deepLinkValue {
+                    // Deferred deep link (first launch after install)
+                }
+            }
+        try? LinkFlowSDK.shared().handleAppLaunch(url: launchOptions?[.url] as? URL)
         return true
     }
-}
 
-extension AppDelegate: AttributionCallback {
-    func onAttributionResolved(_ result: AttributionResult) {
-        if result.attributed {
-            result.rewards.forEach { showRewardNotification($0) }
-        }
+    // Custom URL scheme
+    func application(_ app: UIApplication, open url: URL,
+                     options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        (try? LinkFlowSDK.shared().handleCustomURL(url: url)) ?? false
     }
-    func onAttributionError(_ error: Error) {}
-    func onDeepLinkReceived(_ url: URL) {}
+
+    // Universal links
+    func application(_ application: UIApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+        (try? LinkFlowSDK.shared().handleUniversalLink(userActivity: userActivity)) ?? false
+    }
 }
 ```
+
+### 2. Entitlements and Info.plist
+
+| Setting | Required | Value |
+|---|---|---|
+| Associated Domains entitlement (`com.apple.developer.associated-domains`) | For universal links | `applinks:<your LinkFlow link domain>` (e.g. `applinks:go.example.com`) |
+| `CFBundleURLTypes` | For a custom URL scheme | your scheme, e.g. `myapp` |
+| `NSUserTrackingUsageDescription` | Only if your app requests ATT | your purpose string (the SDK never shows the prompt) |
+| `NSAdvertisingAttributionReportEndpoint`, `AttributionCopyEndpoint` | Optional, for developer copies of SKAN / AdAttributionKit postbacks | `https://<your verified LinkFlow custom domain>` |
+
+React Native / Expo apps can let the `@linkflow/react-native-sdk` Expo config
+plugin write all of these.
+
+## What's new in 2.2
+
+```swift
+let sdk = try LinkFlowSDK.shared()
+
+// Hold deep links while onboarding / login is showing...
+sdk.holdDeepLinks()
+// ...and deliver what arrived meanwhile once the app can navigate.
+sdk.releaseDeepLinks()
+
+// Optional dedicated handler for direct (universal / custom-scheme) links.
+// Direct links still reach the attribution callback as in 2.1.
+sdk.setDeepLinkCallback { url in /* route */ }
+
+// How the server matched the install (nil against older servers).
+sdk.getAttributionResult()?.match?.method   // install_referrer | click_token | advertising_id | probabilistic | organic
+
+// Support snapshot. Contains no identifiers or personal data.
+print(sdk.getDiagnostics())
+```
+
+- **Hold/release:** while held, the deferred deep link (an attributed result
+  carrying a link) and direct deep links are queued. Only the latest of each
+  kind is kept, and they are delivered in arrival order on release. Not held
+  by default.
+- **Organic installs:** servers from 2.2 return an install id and token for
+  unmatched installs too. The SDK stores them, so organic users' events,
+  revenue and `setCustomerUserId` reach the server. With older servers
+  nothing changes.
+- **Diagnostics:** SDK version, API host, consent state, whether an install
+  id/token exist, last resolve time and category (`attributed`, `organic`,
+  `rejected`, `network_error`, `invalid_response`), match method, queued event
+  count, hold state. *Why didn't my deep link fire?* Check `deepLinksHeld`,
+  `consentState` (`pending` buffers the launch until `setConsent`),
+  `attributionCallbackSet` and `lastResolveResult`.
 
 ## What's new in 2.1
 
